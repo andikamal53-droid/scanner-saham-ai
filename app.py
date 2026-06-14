@@ -1,4 +1,3 @@
-import streamlit as pd
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -24,7 +23,8 @@ def hitung_rsi(data, periode=14):
     rs = gain / (loss + 1e-10)
     return 100 - (100 / (1 + rs))
 
-if tombol_pindai or choices := pilihan_saham:
+# Memperbaiki bagian pengecekan tombol yang menyebabkan error
+if tombol_pindai or pilihan_saham:
     hasil_scan = []
     
     for tickers in pilihan_saham:
