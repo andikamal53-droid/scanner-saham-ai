@@ -1,92 +1,73 @@
+import streamlit as pd
 import streamlit as st
+import yfinance as yf
 import pandas as pd
 import numpy as np
-import yfinance as yf
 
-# --- PENGATURAN HALAMAN DASHBOARD ---
-st.set_page_config(
-    page_title="Super-App Pemindai Saham AI",
-    page_icon="📈",
-    layout="wide"
-)
+st.set_page_config(page_title="Super-App Pemindai Saham AI", page_icon="📈", layout="wide")
 
-st.title("🚀 Super-App Pemindai Saham & Proteksi AI (IHSG)")
-st.write("Aplikasi pemindai saham otomatis untuk mendeteksi arus uang dan menghindari jebakan bandar secara langsung.")
-st.markdown("---")
+st.title("📈 Super-App Pemindai Saham AI")
+st.write("Aplikasi pemindai saham otomatis menggunakan indikator teknikal.")
 
-# --- DAFTAR SAHAM AKTIF IHSG ---
-SAHAM_IHSG = ["BBRI.JK", "BBCA.JK", "BMRI.JK", "TLKM.JK", "ASII.JK", "GOTO.JK", "AMMN.JK", "BRIS.JK"]
+# Daftar saham sampel
+daftar_saham = ['BBCA.JK', 'BBRI.JK', 'BMRI.JK', 'TLKM.JK', 'ASII.JK', 'GOTO.JK', 'UNVR.JK']
 
-@st.cache_data(ttl=300)
-def ambil_data_bursa(tickers):
-    hasil = []
-    for t in tickers:
-        try:
-            data = yf.download(t, period="1y", progress=False)
-            if len(data) < 50: continue
-            
-            delta = data['Close'].diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-            rs = gain / loss
-            data['RSI'] = 100 - (100 / (1 + rs))
-            data['Vol_MA20'] = data['Volume'].rolling(window=20).mean()
-            
-            hari_ini = data.iloc[-1]
-            kemarin = data.iloc[-2]
-            
-            hasil.append({
-                "Saham": t.replace(".JK", ""),
-                "Harga_Sekarang": float(hari_ini['Close']),
-                "Harga_Kemarin": float(kemarin['Close']),
-                "RSI": float(hari_ini['RSI']),
-                "Volume_Hari_Ini": float(hari_ini['Volume']),
-                "Volume_Rata2": float(hari_ini['Vol_MA20'])
-            })
-        except:
-            continue
-    return pd.DataFrame(hasil)
+st.sidebar.header("Pengaturan Pemindai")
+pilihan_saham = st.sidebar.multiselect("Pilih Saham untuk Dipindai", daftar_saham, default=daftar_saham)
 
-with st.spinner("Sedang mengambil data terbaru dari Bursa Efek Indonesia..."):
-    df_saham = ambil_data_bursa(SAHAM_IHSG)
+tombol_pindai = st.sidebar.button("Mulai Pindai Saham")
 
-tab1, tab2, tab3 = st.tabs(["📊 Pemindai Utama", "🔮 Target Harga Penutupan", "🛡️ AI Anti-Jebakan Bandar"])
+def hitung_rsi(data, periode=14):
+    delta = data.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=periode).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=periode).mean()
+    rs = gain / (loss + 1e-10)
+    return 100 - (100 / (1 + rs))
 
-# TAB 1
-with tab1:
-    st.header("🔍 Hasil Pemindaian Saham Real-Time")
-    df_saham['Kondisi_RSI'] = np.where(df_saham['RSI'] < 35, "🟢 Jenuh Jual (Peluang Beli)", 
-                               np.where(df_saham['RSI'] > 70, "🔴 Jenuh Beli (Rawan Koreksi)", "⚪ Netral"))
-    df_saham['Lonjakan_Volume'] = np.where(df_saham['Volume_Hari_Ini'] > (df_saham['Volume_Rata2'] * 1.5), "🔥 YA (Masif)", "Tidak")
+if tombol_pindai or choices := pilihan_saham:
+    hasil_scan = []
     
-    st.dataframe(df_saham[['Saham', 'Harga_Sekarang', 'RSI', 'Kondisi_RSI', 'Lonjakan_Volume']].rename(columns={
-        "Harga_Sekarang": "Harga Terakhir (Rp)", "Kondisi_RSI": "Status RSI", "Lonjakan_Volume": "Ada Lonjakan Volume?"
-    }), use_container_width=True, index=False)
-
-# TAB 2
-with tab2:
-    st.header("🔮 Prediksi Rentang Harga Penutupan")
-    hasil_prediksi = []
-    for _, row in df_saham.iterrows():
-        selisih_harian = row['Harga_Sekarang'] * 0.015
-        batas_atas = row['Harga_Sekarang'] + selisih_harian
-        batas_bawah = row['Harga_Sekarang'] - selisih_harian
-        hasil_prediksi.append({
-            "Saham": row['Saham'], "Harga Saat Ini": f"Rp {int(row['Harga_Sekarang'])}",
-            "Estimasi Rentang Penutupan Sore": f"Rp {int(batas_bawah)} - Rp {int(batas_atas)}"
-        })
-    st.table(pd.DataFrame(hasil_prediksi))
-
-# TAB 3
-with tab3:
-    st.header("🛡️ Hasil Analisis Intelijen AI Anti-Jebakan")
-    for _, row in df_saham.iterrows():
-        perubahan_harga = ((row['Harga_Sekarang'] - row['Harga_Kemarin']) / row['Harga_Kemarin']) * 100
-        rasio_vol = row['Volume_Hari_Ini'] / row['Volume_Rata2']
+    for tickers in pilihan_saham:
+        try:
+            saham = yf.Ticker(tickers)
+            hist = saham.history(period="3mo")
+            if len(hist) < 15:
+                continue
+                
+            harga_terakhir = hist['Close'].iloc[-1]
+            hist['RSI'] = hitung_rsi(hist['Close'])
+            rsi_terakhir = hist['RSI'].iloc[-1]
+            
+            # Tentukan Kondisi RSI
+            if rsi_terakhir < 30:
+                kondisi_rsi = "Oversold (Jenuh Jual / Murah)"
+            elif rsi_terakhir > 70:
+                kondisi_rsi = "Overbought (Jenuh Beli / Mahal)"
+            else:
+                kondisi_rsi = "Netral"
+                
+            hasil_scan.append({
+                "Kode Saham": tickers,
+                "Harga Terakhir": f"Rp {harga_terakhir:,.0f}" if ".JK" in tickers else f"${harga_terakhir:,.2f}",
+                "RSI (14)": f"{rsi_terakhir:.2f}",
+                "Kondisi_RSI": kondisi_rsi
+            })
+        except Exception as e:
+            continue
+            
+    if hasil_scan:
+        df_saham = pd.DataFrame(hasil_scan)
         
-        if perubahan_harga > 3.0 and rasio_vol < 0.8:
-            st.error(f"🚨 **Saham {row['Saham']}**: TERDETEKSI JEBAKAN BANDAR (FAKE PUMP)! Harga dinaikkan agresif {perubahan_harga:.2f}% tanpa volume kuat. Jangan FOMO!")
-        elif row['RSI'] < 35 and rasio_vol > 1.5:
-            st.success(f"🟢 **Saham {row['Saham']}**: AKUMULASI AMAN. Harga di area bawah dan volume meningkat masif. Risiko jebakan sangat rendah.")
-        else:
-            st.warning(f"🟡 **Saham {row['Saham']}**: Kondisi pergerakan pasar normal. Belum ada tanda manipulasi bandar.")
+        # Tampilkan Tabs
+        tab1, tab2 = st.tabs(["📊 Pemindai Utama", "🔮 Target Harga Penutupan"])
+        
+        with tab1:
+            st.subheader("Hasil Pemindaian Indikator Saham")
+            st.dataframe(df_saham, use_container_width=True)
+            
+        with tab2:
+            st.subheader("Analisis Target Harga Penutupan")
+            st.write("Fitur target harga berbasis AI sedang memuat data historis...")
+            st.dataframe(df_saham[["Kode Saham", "Harga Terakhir", "Kondisi_RSI"]], use_container_width=True)
+    else:
+        st.warning("Gagal mengambil data saham. Pastikan Anda terhubung ke internet.")
