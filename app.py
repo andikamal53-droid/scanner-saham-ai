@@ -6,13 +6,27 @@ import numpy as np
 st.set_page_config(page_title="Super-App Pemindai Saham AI", page_icon="📈", layout="wide")
 
 st.title("📈 Super-App Pemindai Saham AI")
-st.write("Aplikasi pemindai saham otomatis menggunakan indikator teknikal.")
+st.write("Aplikasi pemindai saham otomatis Indonesia & Global menggunakan indikator teknikal.")
 
-# Daftar saham sampel
-daftar_saham = ['BBCA.JK', 'BBRI.JK', 'BMRI.JK', 'TLKM.JK', 'ASII.JK', 'GOTO.JK', 'UNVR.JK']
+# Sistem melacak daftar saham secara dinamis berdasarkan input user
+if 'daftar_saham_user' not in st.session_state:
+    st.session_state['daftar_saham_user'] = ['BBCA.JK', 'BBRI.JK', 'AAPL', 'TSLA']
 
 st.sidebar.header("Pengaturan Pemindai")
-pilihan_saham = st.sidebar.multiselect("Pilih Saham untuk Dipindai", daftar_saham, default=daftar_saham)
+
+# Kotak input teks untuk mengetik saham baru secara bebas
+saham_baru = st.sidebar.text_input("Tambah Kode Saham Baru (Contoh: ANTM.JK atau NVDA):", "").upper()
+
+# Jika user mengetik kode baru, masukkan ke dalam daftar pilihan
+if saham_baru and saham_baru not in st.session_state['daftar_saham_user']:
+    st.session_state['daftar_saham_user'].append(saham_baru)
+
+# Menampilkan daftar saham yang bisa dipilih/dihapus
+pilihan_saham = st.sidebar.multiselect(
+    "Saham yang akan dipindai:",
+    options=st.session_state['daftar_saham_user'],
+    default=st.session_state['daftar_saham_user']
+)
 
 tombol_pindai = st.sidebar.button("Mulai Pindai Saham")
 
@@ -23,7 +37,6 @@ def hitung_rsi(data, periode=14):
     rs = gain / (loss + 1e-10)
     return 100 - (100 / (1 + rs))
 
-# Memperbaiki bagian pengecekan tombol yang menyebabkan error
 if tombol_pindai or pilihan_saham:
     hasil_scan = []
     
@@ -38,11 +51,10 @@ if tombol_pindai or pilihan_saham:
             hist['RSI'] = hitung_rsi(hist['Close'])
             rsi_terakhir = hist['RSI'].iloc[-1]
             
-            # Tentukan Kondisi RSI
             if rsi_terakhir < 30:
-                kondisi_rsi = "Oversold (Jenuh Jual / Murah)"
+                kondisi_rsi = "Oversold (Murah)"
             elif rsi_terakhir > 70:
-                kondisi_rsi = "Overbought (Jenuh Beli / Mahal)"
+                kondisi_rsi = "Overbought (Mahal)"
             else:
                 kondisi_rsi = "Netral"
                 
@@ -57,8 +69,6 @@ if tombol_pindai or pilihan_saham:
             
     if hasil_scan:
         df_saham = pd.DataFrame(hasil_scan)
-        
-        # Tampilkan Tabs
         tab1, tab2 = st.tabs(["📊 Pemindai Utama", "🔮 Target Harga Penutupan"])
         
         with tab1:
@@ -70,4 +80,4 @@ if tombol_pindai or pilihan_saham:
             st.write("Fitur target harga berbasis AI sedang memuat data historis...")
             st.dataframe(df_saham[["Kode Saham", "Harga Terakhir", "Kondisi_RSI"]], use_container_width=True)
     else:
-        st.warning("Gagal mengambil data saham. Pastikan Anda terhubung ke internet.")
+        st.warning("Silakan ketuk tombol 'Mulai Pindai Saham' atau masukkan kode saham.")
